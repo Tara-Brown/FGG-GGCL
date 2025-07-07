@@ -37,7 +37,7 @@ class MoleculeModel(nn.Module):
 
         :param args: Arguments.
         """
-        if encoder_name == 'GroupGNN':
+        if encoder_name == 'mac':
             vocab_df = pd.read_csv(os.path.join(args.path, 'vocab.csv'))
             vocab_list = vocab_df['smiles'].tolist()
             vocab_datas = get_vocab_descriptors(args, vocab_list) 

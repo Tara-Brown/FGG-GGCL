@@ -664,17 +664,17 @@ def analyze_fragment_counts(csv_file, smiles_column="mol", maxSR=20, minFragAtom
    
 if __name__=="__main__":
     # pick one of your molecules (or load from CSV)
-    example = "CC[C@]1(O)C[C@H]2CN(CCc3c([nH]c4ccccc34)[C@@](C2)(C(=O)OC)c5cc6c(cc5OC)N(C=O)[C@H]7[C@](O)([C@H](OC(C)=O)[C@]8(CC)C=CCN9CC[C@]67[C@H]89)C(=O)OC)C1"
-    G, frags = build_frag_graph(example, maxBlocks=30, maxSR=6, minFragAtoms=1)
-    draw_frag_graph(G, frags, out_file="macfrag_graph_fixed.jpg")
+    #example = "CC[C@]1(O)C[C@H]2CN(CCc3c([nH]c4ccccc34)[C@@](C2)(C(=O)OC)c5cc6c(cc5OC)N(C=O)[C@H]7[C@](O)([C@H](OC(C)=O)[C@]8(CC)C=CCN9CC[C@]67[C@H]89)C(=O)OC)C1"
+    #G, frags = build_frag_graph(example, maxBlocks=30, maxSR=6, minFragAtoms=1)
+    #draw_frag_graph(G, frags, out_file="macfrag_graph_fixed.jpg")
     # Example usage:
     # Replace this SMILES with whatever you'd like to split & visualize.
-    example_smiles = "CC[C@]1(O)C[C@H]2CN(CCc3c([nH]c4ccccc34)[C@@](C2)(C(=O)OC)c5cc6c(cc5OC)N(C=O)[C@H]7[C@](O)([C@H](OC(C)=O)[C@]8(CC)C=CCN9CC[C@]67[C@H]89)C(=O)OC)C1"
-    visualize_macfrag(
-        example_smiles,
-        maxBlocks=4,
-        maxSR=8,
-        minFragAtoms=1,
-        out_file="macfrag_splits.jpg"
-    )
-    analyze_fragment_counts("raw/bbbp.csv", smiles_column="mol", maxSR=16, minFragAtoms=1)
+    #example_smiles = "CC[C@]1(O)C[C@H]2CN(CCc3c([nH]c4ccccc34)[C@@](C2)(C(=O)OC)c5cc6c(cc5OC)N(C=O)[C@H]7[C@](O)([C@H](OC(C)=O)[C@]8(CC)C=CCN9CC[C@]67[C@H]89)C(=O)OC)C1"
+    #visualize_macfrag(
+        #example_smiles,
+        #maxBlocks=4,
+        #maxSR=8,
+        #minFragAtoms=1,
+        #out_file="macfrag_splits.jpg"
+    #)
+    #analyze_fragment_counts("raw/bbbp.csv", smiles_column="mol", maxSR=16, minFragAtoms=1)
