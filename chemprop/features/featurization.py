@@ -11,7 +11,7 @@ from rdkit import RDConfig
 from rdkit import RDLogger 
 from rdkit.Chem import ChemicalFeatures 
 from rdkit.Chem import MACCSkeys
-import dgl
+
 # from chemprop.descriptors.rdNormalizedDescriptors import RDKit2DNormalized
 # from multiprocessing import Pool
 

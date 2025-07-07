@@ -1,6 +1,7 @@
 from argparse import Namespace
 
 from .functional_augment import FragmentGNNEncoder as SerGINE
+from .cmpn import CMPN
 from .group_augment import Predictor
 from chemprop.nn_utils import get_activation_function, initialize_weights,index_select_ND
 import torch
@@ -45,6 +46,8 @@ class MoleculeModel(nn.Module):
             self.encoder = Predictor(args, vocab_datas.to(args.device) )
         elif encoder_name == 'FuncGNN':
             self.encoder = SerGINE(args)
+        elif encoder_name == 'CMPNN':
+            self.encoder = CMPN(args)
     def create_ffn(self, args: Namespace):
         """
         Creates the feed-forward network for the model.

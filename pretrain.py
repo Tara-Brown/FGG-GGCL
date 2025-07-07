@@ -19,13 +19,15 @@ def pretrain(args: Namespace, logger: Logger = None) -> Tuple[float, float]:
 
 if __name__ == '__main__':
     args = parse_train_args()
-    args.data_path = "/home/tara/group-graph-testing/group-graph/dataset/class_task/clintox/clintox.csv"
-    args.path = "/home/tara/group-graph-testing/group-graph/dataset/class_task/clintox"
+    #args.data_path = "/home/tara/group-graph-testing/ContrastiveFGG/data/toxcast/toxcast.csv"
+    #args.path = "/home/tara/group-graph-testing/ContrastiveFGG/data/toxcast"
+    args.data_path = "/home/tara/group-graph-testing/group-graph/dataset/class_task/bace/bace.csv"
+    args.path = "/home/tara/group-graph-testing/group-graph/dataset/class_task/bace"
     args.gpu = 1
     args.runs = 1
     args.start_epochs = 0
-    args.end_epochs = 1000
-    args.batch_size = 32
+    args.end_epochs = 200
+    args.batch_size = 50
     args.exp_id = 'pretrain'
     args.device = 'cuda:1'
     args.dataset_type = 'classification'
@@ -38,7 +40,7 @@ if __name__ == '__main__':
     args.gru_head = 6
     args.add_step=''
     args.step =''
-    args.num_tasks = 2
+    args.num_tasks = 1
     args.gnn_type = 'gin'
     args.graph_pooling = 'mean'
     args.fg_dim = 73

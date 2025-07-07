@@ -327,7 +327,7 @@ def pre_training(args: Namespace, logger: Logger = None) -> List[float]:
 
             debug(f'Building model {model_idx}')
             # model = build_model(args)
-            model1 = build_pretrain_model(args, encoder_name='GroupGNN') #One of these will be used for group graph (im thinking this one)
+            model1 = build_pretrain_model(args, encoder_name='CMPNN') #One of these will be used for group graph (im thinking this one)
             model2 = build_pretrain_model(args, encoder_name='FuncGNN') # This one will be used for the functional group graph
         
 
@@ -402,14 +402,15 @@ def pre_training(args: Namespace, logger: Logger = None) -> List[float]:
 
             debug = logger.debug if logger is not None else print
             total_loss = 0
-            
+            step = 'pretrain'
             with tqdm(total=len(train_loader)) as t:
                 for batch, target in train_loader:
                     model1.train()
                     model2.train()
                     # Run model
-                    emb1 = model1(batch).to(device) # Group Graph
-                    emb2 = model2(batch).to(device) # Functional Group graph + y (for now)
+                    # emb1 = model1(step, False, batch, None)
+                    emb1 = model1(batch) # Original graph
+                    emb2 = model2(batch).to(device) # Functional Group graph 
                     print(f"Aug1 emb mean: {emb1.mean():.4f}, std: {emb1.std():.4f}")
                     print(f"Aug2 emb mean: {emb2.mean():.4f}, std: {emb2.std():.4f}")
                     labels = target.to(device).view(-1, args.num_tasks)
@@ -473,7 +474,7 @@ def pre_training(args: Namespace, logger: Logger = None) -> List[float]:
                         f"Test ROC-AUC: {test_auc:.4f}")
 
             # ---------- Early Stopping ----------
-            if test_auc > best_auc:
+            if test_auc > best_auc:  # Adjust threshold as needed
                 best_auc = test_auc
                 best_epoch = epoch
                 epochs_no_improve = 0
