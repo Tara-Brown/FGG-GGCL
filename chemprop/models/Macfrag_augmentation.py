@@ -196,7 +196,7 @@ def process_data(df):
 
 import os
 from MacFrag import MacFrag
-from dataset import MolDataset, visualize_mol_data, build_frag_graph, draw_frag_graph
+from data_aug2 import MolDataset, visualize_mol_data, build_frag_graph, draw_frag_graph
 from rdkit import Chem
 
 if __name__ == "__main__":
