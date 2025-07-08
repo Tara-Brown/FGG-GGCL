@@ -1,0 +1,5 @@
+Requirement already satisfied: pandas in /home/cassie/miniconda3/envs/groupGraph/lib/python3.9/site-packages (1.5.3)
+Requirement already satisfied: python-dateutil>=2.8.1 in /home/cassie/miniconda3/envs/groupGraph/lib/python3.9/site-packages (from pandas) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in /home/cassie/miniconda3/envs/groupGraph/lib/python3.9/site-packages (from pandas) (2024.1)
+Requirement already satisfied: numpy>=1.20.3 in /home/cassie/miniconda3/envs/groupGraph/lib/python3.9/site-packages (from pandas) (1.23.5)
+Requirement already satisfied: six>=1.5 in /home/cassie/miniconda3/envs/groupGraph/lib/python3.9/site-packages (from python-dateutil>=2.8.1->pandas) (1.17.0)

@@ -323,12 +323,15 @@ def pre_training(args: Namespace, logger: Logger = None) -> List[float]:
             debug(f'Loading model {model_idx} from {args.checkpoint_paths[model_idx]}')
             model1 = load_checkpoint(args.checkpoint_paths[0], args=args, logger=logger,encoder_name='GroupGNN')
             model2 = load_checkpoint(args.checkpoint_paths[1], args=args, logger=logger,encoder_name='FuncGNN')
+            model3 = load_checkpoint(args.checkpoint_paths[2], args=args, logger=logger,encoder_name='MacFrag')
         else:
 
             debug(f'Building model {model_idx}')
             # model = build_model(args)
             model1 = build_pretrain_model(args, encoder_name='GroupGNN') #One of these will be used for group graph (im thinking this one)
             model2 = build_pretrain_model(args, encoder_name='FuncGNN') # This one will be used for the functional group graph
+            model3 = build_pretrain_model(args, encoder_name='MacFrag') # This one will be used for the functional group graph
+            model4 = build_pretrain_model(args, encoder_name='CMPNN') #One of these will be used for group graph (im thinking this one)
         
 
         debug(model1)
@@ -351,7 +354,7 @@ def pre_training(args: Namespace, logger: Logger = None) -> List[float]:
         cl_criterion = ContrastiveLoss(loss_computer='nce_softmax', temperature=args.temperature, args=args).cuda()
         fin_criterion = get_loss_func(args)
         score = get_metric_func(metric=args.metric)
-        optimizer = Adam([{"params": model1.parameters()},{"params": model2.parameters()}], lr=3e-5)
+        optimizer = Adam([{"params": model3.parameters()},{"params": model4.parameters()}], lr=3e-5)
         scheduler = ExponentialLR(optimizer, 0.99, -1)
         step_per_schedule = 500
         global_step = 0
@@ -405,11 +408,11 @@ def pre_training(args: Namespace, logger: Logger = None) -> List[float]:
             
             with tqdm(total=len(train_loader)) as t:
                 for batch, target in train_loader:
-                    model1.train()
-                    model2.train()
+                    model3.train()
+                    model4.train()
                     # Run model
-                    emb1 = model1(batch).to(device) # Group Graph
-                    emb2 = model2(batch).to(device) # Functional Group graph + y (for now)
+                    emb1 = model3(batch).to(device) # Group Graph
+                    emb2 = model4(step, False, batch, None) # Functional Group graph + y (for now)
                     print(f"Aug1 emb mean: {emb1.mean():.4f}, std: {emb1.std():.4f}")
                     print(f"Aug2 emb mean: {emb2.mean():.4f}, std: {emb2.std():.4f}")
                     labels = target.to(device).view(-1, args.num_tasks)
@@ -436,8 +439,8 @@ def pre_training(args: Namespace, logger: Logger = None) -> List[float]:
                     if global_step % step_per_schedule == 0:
                         scheduler.step()
             # save model   
-            model1.eval()
-            model2.eval()
+            model3.eval()
+            model4.eval()
             total_test_loss = 0
             y_true_all = []
             y_score_all = []
@@ -445,8 +448,8 @@ def pre_training(args: Namespace, logger: Logger = None) -> List[float]:
 
             for test_batch, test_target in test_loader:
                 with torch.no_grad():
-                    emb1 = model1(test_batch)
-                    emb2 = model2(test_batch)
+                    emb1 = model3(test_batch)
+                    emb2 = model4(step, False, test_batch, None)
                     labels = test_target.to(device).view(-1, args.num_tasks)
                     mask = ~torch.isnan(labels)
                     labels_masked = labels.clone().masked_fill(~mask, 0)
@@ -465,8 +468,8 @@ def pre_training(args: Namespace, logger: Logger = None) -> List[float]:
             y_score_np = np.concatenate(y_score_all, axis=0)
             test_auc = masked_roc_auc_score(y_true_np, y_score_np)
 
-            snapshot(model1, epoch, dump_folder, 'group')
-            snapshot(model2, epoch, dump_folder, 'func')
+            snapshot(model3, epoch, dump_folder, 'MacFrag')
+            snapshot(model4, epoch, dump_folder, 'CMPNN')
 
             logger.info(f"Epoch {epoch+1}/{args.end_epochs} | Step {global_step} | "
                         f" Avg Test Loss: {avg_test_loss:.4f} | "
@@ -477,8 +480,8 @@ def pre_training(args: Namespace, logger: Logger = None) -> List[float]:
                 best_auc = test_auc
                 best_epoch = epoch
                 epochs_no_improve = 0
-                torch.save(model1.state_dict(), f'{dump_folder}/best_model_group.pt')
-                torch.save(model2.state_dict(), f'{dump_folder}/best_model_func.pt')
+                torch.save(model3.state_dict(), f'{dump_folder}/best_model_macfrag.pt')
+                torch.save(model4.state_dict(), f'{dump_folder}/best_model_cmpnn.pt')
             else:
                 epochs_no_improve += 1
                 if epochs_no_improve >= patience:

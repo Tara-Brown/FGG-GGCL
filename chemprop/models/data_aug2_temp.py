@@ -13,20 +13,22 @@ from chemprop.models.MacFrag import MacFrag
 from chemprop.models.utils import get_task_names
 from torch_geometric.data import DataLoader
 from chemprop.models.config import _C
-#from torch.serialization import add_safe_globals
+from torch.serialization import add_safe_globals
 from rdkit import RDLogger
 
 RDLogger.DisableLog('rdApp.*')
 class Opt:
-    input_file   = 'raw/bbbp.csv'
-    output_path  = 'processed/'
+    input_file= 'data/bbbp.csv'
+    dataset= 'bbbp'
+    task_type= 'classification'
+    output_path  = 'data/processed'
     maxBlocks    = 4
     maxSR        = 8
     asMols       = False
     minFragAtoms = 1
 
 opt = Opt()
-    
+
     
 fun_smarts = {
     'Hbond_donor': '[$([N;!H0;v3,v4&+1]),$([O,S;H1;+0]),n&H1&+0]',
@@ -87,54 +89,37 @@ def atom_attr(mol, explicit_H=False, use_chirality=True, pharmaco=True, scaffold
 
     feat = []
     for i, atom in enumerate(mol.GetAtoms()):
-        # Original features list with bools, ints, floats
         results = onehot_encoding_unk(
             atom.GetSymbol(),
-            ['B', 'C', 'N', 'O', 'F', 'Si', 'P', 'S', 'Cl', 'As', 'Se', 'Br', 'Te', 'I', 'At', 'other']
-        ) + onehot_encoding_unk(atom.GetDegree(), [0, 1, 2, 3, 4, 5, 'other']) + \
-            [atom.GetFormalCharge(), atom.GetNumRadicalElectrons()] + \
-            onehot_encoding_unk(
-                atom.GetHybridization(),
-                [
-                    Chem.rdchem.HybridizationType.SP,
-                    Chem.rdchem.HybridizationType.SP2,
-                    Chem.rdchem.HybridizationType.SP3,
-                    Chem.rdchem.HybridizationType.SP3D,
-                    Chem.rdchem.HybridizationType.SP3D2,
-                    'other'
-                ]
-            ) + [atom.GetIsAromatic()]
-
+            ['B', 'C', 'N', 'O', 'F', 'Si', 'P', 'S', 'Cl', 'As', 'Se', 'Br', 'Te', 'I', 'At', 'other'
+             ]) + onehot_encoding_unk(atom.GetDegree(),
+                                      [0, 1, 2, 3, 4, 5, 'other']) + \
+                  [atom.GetFormalCharge(), atom.GetNumRadicalElectrons()] + \
+                  onehot_encoding_unk(atom.GetHybridization(), [
+                      Chem.rdchem.HybridizationType.SP, Chem.rdchem.HybridizationType.SP2,
+                      Chem.rdchem.HybridizationType.SP3, Chem.rdchem.HybridizationType.SP3D,
+                      Chem.rdchem.HybridizationType.SP3D2, 'other'
+                  ]) + [atom.GetIsAromatic()]
         if not explicit_H:
-            results += onehot_encoding_unk(atom.GetTotalNumHs(), [0, 1, 2, 3, 4])
-
+            results = results + onehot_encoding_unk(atom.GetTotalNumHs(),
+                                                    [0, 1, 2, 3, 4])
         if use_chirality:
             try:
-                results += onehot_encoding_unk(atom.GetProp('_CIPCode'), ['R', 'S']) + [atom.HasProp('_ChiralityPossible')]
+                results = results + onehot_encoding_unk(
+                    atom.GetProp('_CIPCode'),
+                    ['R', 'S']) + [atom.HasProp('_ChiralityPossible')]
             except:
-                results += [0, 0] + [atom.HasProp('_ChiralityPossible')]
-
+                results = results + [0, 0] + [atom.HasProp('_ChiralityPossible')]
         if pharmaco:
-            # These are properties set as strings '1' or '0', convert to int then float
-            results += [
-                float(int(atom.GetProp('Hbond_donor'))),
-                float(int(atom.GetProp('Hbond_acceptor'))),
-                float(int(atom.GetProp('Basic'))),
-                float(int(atom.GetProp('Acid'))),
-                float(int(atom.GetProp('Halogen')))
-            ]
-
+            results = results + [int(atom.GetProp('Hbond_donor'))] + [int(atom.GetProp('Hbond_acceptor'))] + \
+                      [int(atom.GetProp('Basic'))] + [int(atom.GetProp('Acid'))] + \
+                      [int(atom.GetProp('Halogen'))]
         if scaffold:
-            results += [float(int(atom.GetProp('Scaffold')))]
-
-        # Explicitly cast all elements to float to avoid mixed types
-        results = [float(x) for x in results]
-
+            results = results + [int(atom.GetProp('Scaffold'))]
         feat.append(results)
 
-    arr = np.array(feat, dtype=np.float32)
-    #print(f"atom_attr output shape: {arr.shape}, dtype: {arr.dtype}")
-    return arr
+    return np.array(feat)
+
 
 def bond_attr(mol, use_chirality=True):
     feat = []
@@ -159,7 +144,7 @@ def bond_attr(mol, use_chirality=True):
                     feat.append(bond_feats)
                     index.append([i, j])
 
-    return np.array(index), np.array(feat, dtype=np.float32)
+    return np.array(index), np.array(feat)
 
 
 def frag_info(frag):
@@ -168,6 +153,7 @@ def frag_info(frag):
     fra_edge_index, fra_edge_attr = bond_attr(frag)
     cluster_idx = torch.LongTensor(cluster_idx)
     return fra_edge_index, fra_edge_attr, cluster_idx
+
 
 class MolData(Data):
     def __init__(self, fra_edge_index=None, fra_edge_attr=None, cluster_index=None, **kwargs):
@@ -192,18 +178,19 @@ def read_data(target):
 
 class MolDataset(InMemoryDataset):
 
-    def __init__(self, root, dataset, task_type, tasks, logger=None, transform=None, pre_transform=None, pre_filter=None):
+    def __init__(self, root, dataset, task_type, tasks, logger=None,
+                 transform=None, pre_transform=None, pre_filter=None):
 
-        #print("MolDataset: __init__ start")
         self.tasks = tasks
         self.dataset = dataset
         self.task_type = task_type
         self.logger = logger
+        # self.target = target
         super(MolDataset, self).__init__(root, transform, pre_transform, pre_filter)
-        #add_safe_globals([MolData])
-        #print("MolDataset: loading processed data from:", self.processed_paths[0])
+        # Allow MolData class to be unpickled
+        add_safe_globals([MolData])
+        # Load the processed dataset fully (not weights-only)
         self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
-        #print("MolDataset: loaded data with", len(self.data.x), "nodes")  # may not reflect full data length
     @property
     def raw_file_names(self):
         return ['{}.csv'.format(self.dataset)]
@@ -216,11 +203,11 @@ class MolDataset(InMemoryDataset):
         pass
 
     def pro_smi(self):
-        # Read from the hard‑coded MacFrag opt.input_file (e.g. 'raw/BBBP.csv')
+        #print(f"Reading CSV from: {opt.input_file} (type: {type(opt.input_file)})")
         df = pd.read_csv(opt.input_file)
         # Adjust column names to match your CSV: here 'mol' and 'Class'
         smiles = df['smiles'].tolist()
-        labels = df['label_1'].tolist()
+        labels = df['Class'].tolist()
         return df, smiles, labels
 
     def pro_nan(self, labels, default_value=1):
@@ -241,19 +228,17 @@ class MolDataset(InMemoryDataset):
         return y
 
     def process(self):
-        #print("MolDataset: process start")
+
+        #opt = parse_args()
         maxBlocks = int(opt.maxBlocks)
         maxSR = int(opt.maxSR)
         minFragAtoms = int(opt.minFragAtoms)
         d, smiles, l = self.pro_smi()
-        #print(f"MolDataset: loaded {len(smiles)} smiles")
         data_list = []
         mols = []
 
         for i, smi in enumerate(tqdm(smiles)):
             mol = Chem.MolFromSmiles(smi)
-            if mol is None:
-                print(f"MolDataset: invalid mol at index {i}, smiles={smi}")
             mols.append(mol)
 
         for i, smi in enumerate(tqdm(smiles)):
@@ -263,50 +248,35 @@ class MolDataset(InMemoryDataset):
                                 for macfrag_smiles in
                                 (MacFrag(mol, maxBlocks=maxBlocks,
                                          maxSR=maxSR, asMols=False, minFragAtoms=minFragAtoms))]
-                #print(f"MolDataset: mol {i} has {len(macfrag_list)} fragments")
                 for frag_macfrag in macfrag_list:
-                    if frag_macfrag is None:
-                        print(f"MolDataset: warning - fragment is None for mol index {i}")
                     data = self.mol2graph(smi, mol, frag_macfrag, i)
-                    #print(f"MolDataset: created data for mol {i}, data keys: {data.keys}")
                     data_list.append(data)
 
         if self.pre_filter is not None:
-            #print(f"MolDataset: applying pre_filter on {len(data_list)} data samples")
             data_list = [data for data in data_list if self.pre_filter(data)]
         if self.pre_transform is not None:
-            #print(f"MolDataset: applying pre_transform on {len(data_list)} data samples")
             data_list = [self.pre_transform(data) for data in data_list]
 
-        #print(f"MolDataset: collating {len(data_list)} data samples")
         data, slices = self.collate(data_list)
-        #print("MolDataset: saving processed data")
         torch.save((data, slices), self.processed_paths[0])
-        #print("MolDataset: process done")
-
 
     def mol2graph(self, smi, mol, frag, i):
-        if mol is None:
-            return None
-
-        # Get node (atom) features for the whole molecule
+        if mol is None: return None
         node_attr = atom_attr(mol)
-
-        # Bond info for the molecule
         edge_index, edge_attr = bond_attr(mol)
-        edge_attr = edge_attr.astype(np.float32)  # ensure float32
-
-        # Node features for fragment
         frag_node_attr = atom_attr(frag)
-
-        # Fragment edges and cluster indices
         fra_edge_index, fra_edge_attr, cluster_index = frag_info(frag)
 
-        # Convert everything to PyTorch tensors explicitly with right dtypes
+        if edge_attr.dtype == np.bool_:
+            edge_attr = edge_attr.astype(np.float32)
+
+        if fra_edge_attr.dtype == np.bool_:
+            fra_edge_attr = fra_edge_attr.astype(np.float32)
+        
         data = MolData(
-            x=torch.FloatTensor(node_attr),                 # [num_atoms, num_features], float32
-            edge_index=torch.LongTensor(edge_index).t(),   # [2, num_edges]
-            edge_attr=torch.FloatTensor(edge_attr),         # [num_edges, num_edge_features], float32
+            x=torch.FloatTensor(node_attr),
+            edge_index=torch.LongTensor(edge_index).t(),
+            edge_attr=torch.FloatTensor(edge_attr),
             frag_x=torch.FloatTensor(frag_node_attr),
             frag_edge_index=torch.LongTensor(fra_edge_index).t(),
             frag_edge_attr=torch.FloatTensor(fra_edge_attr),
@@ -315,8 +285,8 @@ class MolDataset(InMemoryDataset):
             smiles=smi,
         )
 
-        #print(f"mol2graph: created data with x shape {data.x.shape}, edge_index shape {data.edge_index.shape}")
         return data
+
 
 def get_target_list():
     if _C.DATA.DATASET == 'bbbp':
@@ -405,7 +375,7 @@ def build_dataset(cfg, logger):
     target_list = get_target_list()
 
     for target in target_list:
-        #print('It is the', target, 'target')
+        print('It is the', target, 'target')
 
         train_dataset, valid_dataset, test_dataset, weights = load_dataset_random(cfg.DATA.DATA_PATH,
                                                                                   cfg.DATA.DATASET,
@@ -478,90 +448,78 @@ from rdkit import Chem
 import matplotlib.pyplot as plt
 import networkx as nx
 import torch
-def visualize_mol_data(data, out_path='molecule.png'):
-    """
-    Draw the graph and save it to a JPEG file.
-
-    Args:
-        data (MolData): your PyG graph
-        out_path (str): path to write the .jpg file
-    """
+from torch_geometric.utils import to_networkx
+def visualize_mol_data(data, out_path='molecule.jpg'):
     import matplotlib.pyplot as plt
     import networkx as nx
+    G = to_networkx(data, to_undirected=True)
 
-    # Build NetworkX graph
-    #print("visualize_mol_data: start")
-    #print(f"visualize_mol_data: data keys: {data.keys}")
-    #print(f"visualize_mol_data: data.x shape: {data.x.shape}, dtype: {data.x.dtype}")
-    #print(f"visualize_mol_data: data.edge_index shape: {data.edge_index.shape}")
+    # Compute layout positions
+    pos = nx.spring_layout(G)
 
-    G = nx.Graph()
-    edge_index = data.edge_index.cpu().numpy()
-    #print(f"visualize_mol_data: edge_index numpy shape {edge_index.shape}")
-    for i, j in edge_index.T:
-        G.add_edge(i, j)
+    # Clean position dict: ensure numpy float arrays of shape (2,)
+    clean_pos = {}
+    for k, v in pos.items():
+        arr = np.array(v, dtype=np.float64)
+        if arr.size != 2:
+            raise ValueError(f"Node {k} position is not 2D: {arr}")
+        clean_pos[int(k)] = arr.astype(float)
+    for k, v in clean_pos.items():
+        print(f"Node {k} pos type: {type(v)}, shape: {v.shape}, values: {v}")
 
+    # Define atom types matching your node features (adjust if needed)
     atom_types = ['B','C','N','O','F','Si','P','S','Cl','As','Se','Br','Te','I','At','other']
-    #print("Type of data.x:", type(data.x))
-    #print("Data.x tensor dtype:", data.x.dtype)
-    #print("Data.x tensor shape:", data.x.shape)
-    #print("Sample elements:", data.x[:5])
-    #print("Attempting to convert to numpy array:")
-    
+
+    # Extract node features to numpy
     node_feats = data.x.cpu().numpy()
-    
-    #print("Raw node_feats.dtype:", node_feats.dtype)
-    #print("node_feats.dtype.type:", node_feats.dtype.type)
-    #print("repr of dtype:", repr(node_feats.dtype))
-    #print("str of dtype:", str(node_feats.dtype))
-    #print("Node_feats type:", type(node_feats))
-    #print("Node_feats dtype (before #print):", node_feats.dtype)
-    #print(f"visualize_mol_data: node_feats dtype {node_feats.dtype}, shape {node_feats.shape}")
+
+    # Map node features to atom labels by argmax of first 16 features (assumed atom type one-hot)
     labels = []
-    for idx, feat in enumerate(node_feats):
-        try:
-            arr = np.array(feat[:16])
-            label_idx = arr.argmax()
-            labels.append(atom_types[label_idx])
-        except Exception as e:
-            #print(f"visualize_mol_data: error at node {idx} feat: {feat} - {e}")
-            labels.append('unknown')
-    #print("Type of node_feats[0,0]:", type(node_feats[0,0]))
-    #print("Value of node_feats[0,0]:", node_feats[0,0])
-    #print(f"Node_feats shape: {node_feats.shape}")
-    #print(f"Node_feats element type via python type(): {type(node_feats.flat[0])}")
-    #print(f"visualize_mol_data: labels: {labels}")
+    for feat in node_feats:
+        if feat[:16].sum() > 0:
+            idx = feat[:16].argmax()
+            labels.append(atom_types[idx])
+        else:
+            labels.append('other')
 
+    label_dict = {idx: label for idx, label in enumerate(labels)}
+
+    # Plot graph
+
+    print("Node attributes:")
+    for n, d in G.nodes(data=True):
+        print(n, d)
+
+    print("Edge attributes:")
+    for u, v, d in G.edges(data=True):
+        print(u, v, d)
     plt.figure(figsize=(8,8))
-    pos = nx.spring_layout(G, seed=42)
-    nx.draw_networkx_nodes(G, pos, node_color='skyblue', node_size=300)
-    nx.draw_networkx_edges(G, pos)
-    nx.draw_networkx_labels(G, pos, labels={i:labels[i] for i in G.nodes()}, font_size=12)
-    plt.title('Molecular Graph')
+    nx.draw_networkx_nodes(G, clean_pos, node_color='skyblue', node_size=300)
+    nx.draw_networkx_edges(G, clean_pos)
+    nx.draw_networkx_labels(G, clean_pos, labels=label_dict, font_size=12)
+    plt.title('Molecular Graph Visualization')
     plt.axis('off')
-
     plt.tight_layout()
-    dir_path = os.path.dirname(out_path)
-    if dir_path:
-        os.makedirs(dir_path, exist_ok=True)
     plt.savefig(out_path, format='png', dpi=300)
     plt.close()
-    #print(f"visualize_mol_data: saved graph to {out_path}")
 
+
+    print(f"Saved molecular graph visualization to {out_path}")
 
 from torch_geometric.data import DataLoader
 
 # Assuming dataset root and dataset name are set correctly
-#print("Main: Loading dataset")
-dataset_root = '.'  
-dataset_name = 'bbbp'  
+dataset_root = '.'  # or wherever your processed dataset is saved
+dataset_name = 'bbbp'  # e.g. 'bbbp', 'tox21' or your own csv file prefix
 
+# Load your dataset
 dataset = MolDataset(root=dataset_root, dataset=dataset_name, task_type='classification', tasks=None)
-#print(f"Main: Dataset loaded with {len(dataset)} samples")
 
-data_sample = dataset[0]
-#print(f"Main: Sample 0 loaded with keys: {data_sample.keys}")
-visualize_mol_data(data_sample, out_path='molecule_graph.png')
+# dataset.process()  # Uncomment if you want to process (only needed once)
+
+# Pick one sample from dataset
+data_sample = dataset[6]
+visualize_mol_data(data_sample, out_path='molecule_graph.jpg')
 
 
 # a helper to turn an RDKit Mol into a NetworkX graph & labels
@@ -580,7 +538,7 @@ def visualize_macfrag(
     maxSR=8,
     minFragAtoms=1,
     asMols=False,
-    out_file="macfrag_splits.pmg"
+    out_file="macfrag_splits.jpg"
 ):
     """
     Split the input SMILES via MacFrag, then draw each fragment in a grid.
@@ -606,9 +564,15 @@ def visualize_macfrag(
     for idx, frag_smi in enumerate(frags):
         frag_mol = Chem.MolFromSmiles(frag_smi)
         G, labels = mol_to_nx(frag_mol)
+    
+        if len(G) == 0:
+            print(f"Warning: Fragment {idx} has no nodes.")
+            continue
 
         ax = plt.subplot(rows, cols, idx + 1)
-        pos = nx.spring_layout(G, seed=42)
+        pos = nx.kamada_kawai_layout(G)
+        print("pos:", type(pos), list(pos.items())[:3])
+        print("labels:", labels[:3])
         nx.draw_networkx_nodes(G, pos, ax=ax, node_color='lightgreen', node_size=300)
         nx.draw_networkx_edges(G, pos, ax=ax)
         nx.draw_networkx_labels(G, pos, labels=labels, ax=ax, font_size=12)
@@ -625,7 +589,7 @@ def visualize_macfrag(
 import matplotlib.pyplot as plt
 import networkx as nx
 from rdkit import Chem
-from chemprop.models.MacFrag import mol_with_atom_index, searchBonds
+from MacFrag import mol_with_atom_index, searchBonds
 from rdkit.Chem.BRICS import BreakBRICSBonds
 
 def build_frag_graph(smiles, maxBlocks=4, maxSR=8, minFragAtoms=1):
@@ -634,10 +598,7 @@ def build_frag_graph(smiles, maxBlocks=4, maxSR=8, minFragAtoms=1):
     mol = mol_with_atom_index(mol)
 
     # get the full MacFrag bond tuples
-
     bonds = list(searchBonds(mol, maxSR=maxSR))
-    #print("bonds variable:", bonds)
-    #print("type(bonds):", type(bonds))
 
     # break exactly those bonds
     broken = BreakBRICSBonds(mol, bonds=bonds)
@@ -666,13 +627,15 @@ def build_frag_graph(smiles, maxBlocks=4, maxSR=8, minFragAtoms=1):
     return G, [f for f,_ in frag_sets]
 
 
-def draw_frag_graph(G, frags, out_file="macfrag_graph_fixed.png"):
+def draw_frag_graph(G, frags, out_file="macfrag_graph_fixed.jpg"):
     # label each node with its index and fragment‐SMILES
     labels = {i: f"#{i}\n{Chem.MolToSmiles(frag, canonical=True)}"
               for i,frag in enumerate(frags)}
 
     plt.figure(figsize=(6,6))
     pos = nx.spring_layout(G, seed=42)
+    print("pos:", type(pos), list(pos.items())[:3])
+    print("labels:", labels[:3])
     nx.draw_networkx_nodes(G, pos, node_color="lightcoral", node_size=800)
     nx.draw_networkx_edges(G, pos, width=2)
     nx.draw_networkx_labels(G, pos, labels, font_size=8)
@@ -684,8 +647,67 @@ def draw_frag_graph(G, frags, out_file="macfrag_graph_fixed.png"):
     print(f"Saved fragment graph to {out_file}")
 
 
-if __name__=="__main__":
+import pandas as pd
+from rdkit import Chem
+from MacFrag import mol_with_atom_index, searchBonds
+from rdkit.Chem.BRICS import BreakBRICSBonds
+from tqdm import tqdm
+from collections import Counter
+
+def count_real_fragments(smiles, maxSR=8, minFragAtoms=1):
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return None
+        mol = mol_with_atom_index(mol)
+
+        bonds = list(searchBonds(mol, maxSR=maxSR))
+        broken = BreakBRICSBonds(mol, bonds=bonds)
+        frags = Chem.GetMolFrags(broken, asMols=True)
+
+        count = 0
+        for frag in frags:
+            atom_ids = {a.GetAtomMapNum() for a in frag.GetAtoms() if a.GetAtomMapNum() >= 0}
+            if len(atom_ids) >= minFragAtoms:
+                count += 1
+        return count
+    except:
+        return None
+
+def analyze_fragment_counts(csv_file, smiles_column="mol", maxSR=20, minFragAtoms=1):
+    df = pd.read_csv(csv_file)
+    frag_hist = Counter()
+    total_valid = 0
+
+    for smi in tqdm(df[smiles_column]):
+        frag_count = count_real_fragments(smi, maxSR=maxSR, minFragAtoms=minFragAtoms)
+        if frag_count is not None:
+            frag_hist[frag_count] += 1
+            total_valid += 1
+
+    print(f"\n=== Fragment Count Distribution ===")
+    for k in sorted(frag_hist.keys()):
+        count = frag_hist[k]
+        percent = 100 * count / total_valid
+        print(f"{k} fragments: {count} molecules ({percent:.2f}%)")
+    print(f"\nTotal valid molecules: {total_valid}")
+
+
+
+#if __name__=="__main__":
+    #pass
     # pick one of your molecules (or load from CSV)
-    example = "CC[C@]1(O)C[C@H]2CN(CCc3c([nH]c4ccccc34)[C@@](C2)(C(=O)OC)c5cc6c(cc5OC)N(C=O)[C@H]7[C@](O)([C@H](OC(C)=O)[C@]8(CC)C=CCN9CC[C@]67[C@H]89)C(=O)OC)C1"
-    G, frags = build_frag_graph(example, maxBlocks=30, maxSR=8, minFragAtoms=1)
-    draw_frag_graph(G, frags, out_file="macfrag_graph_fixed.png")
+    #example = "CC[C@]1(O)C[C@H]2CN(CCc3c([nH]c4ccccc34)[C@@](C2)(C(=O)OC)c5cc6c(cc5OC)N(C=O)[C@H]7[C@](O)([C@H](OC(C)=O)[C@]8(CC)C=CCN9CC[C@]67[C@H]89)C(=O)OC)C1"
+    #G, frags = build_frag_graph(example, maxBlocks=30, maxSR=6, minFragAtoms=1)
+    #draw_frag_graph(G, frags, out_file="macfrag_graph_fixed.jpg")
+    # Example usage:
+    #Replace this SMILES with whatever you'd like to split & visualize.
+    #example_smiles = "CC[C@]1(O)C[C@H]2CN(CCc3c([nH]c4ccccc34)[C@@](C2)(C(=O)OC)c5cc6c(cc5OC)N(C=O)[C@H]7[C@](O)([C@H](OC(C)=O)[C@]8(CC)C=CCN9CC[C@]67[C@H]89)C(=O)OC)C1"
+    #visualize_macfrag(
+    #    example_smiles,
+    #    maxBlocks=4,
+    #    maxSR=8,
+    #    minFragAtoms=1,
+    #    out_file="macfrag_splits.jpg"
+    #)
+    # analyze_fragment_counts("raw/bbbp.csv", smiles_column="mol", maxSR=16, minFragAtoms=1)

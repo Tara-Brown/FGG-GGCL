@@ -12,7 +12,7 @@ from itertools import repeat
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit import DataStructs
-from chemprop.new_features.chem import *
+from ..new_features.cass_chem import *
 
 
 class MultiGraphData(Data):

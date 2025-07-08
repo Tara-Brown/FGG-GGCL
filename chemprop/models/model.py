@@ -2,6 +2,7 @@ from argparse import Namespace
 
 from .functional_augment import FragmentGNNEncoder as SerGINE
 from .group_augment import Predictor
+from .Macfrag_augmentation import FragmentGNNEncoder_MacFrag
 from chemprop.nn_utils import get_activation_function, initialize_weights,index_select_ND
 import torch
 import torch.nn as nn
@@ -10,6 +11,7 @@ import math
 from chemprop.new_features.chem import *
 import pandas as pd
 import os
+from .cmpn import CMPN
 from chemprop.models.data_loader import SmilesDataset, get_vocab_descriptors
 
 class MoleculeModel(nn.Module):
@@ -37,7 +39,7 @@ class MoleculeModel(nn.Module):
 
         :param args: Arguments.
         """
-        if encoder_name == 'mac':
+        if encoder_name == 'GroupGNN':
             vocab_df = pd.read_csv(os.path.join(args.path, 'vocab.csv'))
             vocab_list = vocab_df['smiles'].tolist()
             vocab_datas = get_vocab_descriptors(args, vocab_list) 
@@ -45,6 +47,11 @@ class MoleculeModel(nn.Module):
             self.encoder = Predictor(args, vocab_datas.to(args.device) )
         elif encoder_name == 'FuncGNN':
             self.encoder = SerGINE(args)
+        elif encoder_name == 'MacFrag':
+            self.encoder = FragmentGNNEncoder_MacFrag(args, num_tasks=args.num_tasks)
+        elif encoder_name == 'CMPNN':
+            self.encoder = CMPN(args)
+            
     def create_ffn(self, args: Namespace):
         """
         Creates the feed-forward network for the model.

@@ -8,7 +8,7 @@ import pandas as pd
 from argparse import Namespace
 from rdkit import Chem
 from chemprop.models.loader import MoleculeNetDataset
-from chemprop.new_features.chem import *  # includes mol_to_graphs
+from chemprop.new_features.cass_chem import *
 
 class FragmentGNN(nn.Module):
     def __init__(self, input_dim=101, hidden_per_head=32, num_layers=3, heads=4):
@@ -24,6 +24,7 @@ class FragmentGNN(nn.Module):
 
     def forward(self, data):
         x, edge_index, batch = data.x, data.edge_index, data.batch
+        print("🔍 FragmentGNN input x.shape:", x.shape)  # <-- ADD THIS LINE
         for conv in self.convs:
             x = conv(x, edge_index)
             x = F.relu(x)
@@ -47,7 +48,7 @@ class FGAttentionFusion(nn.Module):
         fused = torch.matmul(attn_weights, v).squeeze(1)
         return fused
 
-class SerGINE(nn.Module):
+class SerGINE_MacFrag(nn.Module):
     def __init__(self, num_atom_layers=3, num_fg_layers=2, latent_dim=128,
                  atom_dim=101, fg_dim=73, bond_dim=11, fg_edge_dim=101, fragment_gnn=None,
                  atom2fg_reduce='mean', pool='mean', dropout=0, **kwargs):
@@ -118,6 +119,8 @@ class SerGINE(nn.Module):
         flat_subgraphs = [fg for mol_subgraphs in subgraphs for fg in mol_subgraphs]
         batched_fgs = Batch.from_data_list(flat_subgraphs)
 
+        print("🧩 Number of fragment subgraphs:", len(flat_subgraphs))           # optional
+        print("🧩 First fragment node feature shape:", flat_subgraphs[0].x.shape)  # <-- ADD
         fg_embeds = self.fragment_gnn(batched_fgs)
 
         fg_x = self.fg_embedding(fg_x)
@@ -133,7 +136,7 @@ class SerGINE(nn.Module):
         fg_graph = self.att_pool(fg_x, fg_batch)
         return fg_graph
 
-class FragmentGNNEncoder(nn.Module):
+class FragmentGNNEncoder_MacFrag(nn.Module):
     def __init__(self, args: Namespace, num_tasks=1):
         super().__init__()
         self.args = args
@@ -146,7 +149,7 @@ class FragmentGNNEncoder(nn.Module):
             heads=args.encoder_head
         )
 
-        self.encoder = SerGINE(
+        self.encoder = SerGINE_MacFrag(
             latent_dim=self.emb_dim,
             atom_dim=args.atom_dim,
             fg_dim=args.fg_dim,
@@ -194,9 +197,55 @@ def process_data(df):
     return dataset
 
 
+def test_encoder_main():
+    import torch
+    from argparse import Namespace
+
+    # Step 1: Setup dummy config (args)
+    args = Namespace(
+        latent_dim=128,
+        atom_dim=101,
+        fg_dim=73,
+        bond_dim=11,
+        fg_edge_dim=101,
+        fg_input_dim=101,
+        num_layers=3,
+        encoder_head=4,
+        graph_pooling='mean',
+        dropout=0.1,
+        device='cpu'  # or 'cuda' if using GPU
+    )
+
+    # Step 2: Load dataset
+    print(f"\n🔍 Loading test sample from MoleculeNetDataset...")
+    dataset = MolDataset(
+        root='.',
+        dataset='bbbp',
+        task_type='classification',
+        tasks=None
+    )
+    sample = dataset[0]
+    print(f"SMILES: {sample.smiles} | Label: {sample.y.item()}")
+
+    # Step 3: Construct DataFrame for encoder input
+    df = pd.DataFrame([[sample.smiles, sample.y.item()]], columns=["smiles", "label"])
+
+    # Step 4: Build encoder
+    print("⚙️ Initializing encoder...")
+    model = FragmentGNNEncoder_MacFrag(args, num_tasks=1)
+
+    # Step 5: Forward pass
+    print("🚀 Running encoder forward pass...")
+    with torch.no_grad():
+        output = model(df)
+
+    print(f"\n✅ Encoder output shape: {output.shape}")
+    print(f"Encoder output vector: {output[0][:10]}...")  # print first 10 dims
+
+
 import os
-from MacFrag import MacFrag
-from data_aug2 import MolDataset, visualize_mol_data, build_frag_graph, draw_frag_graph
+from chemprop.models.MacFrag import MacFrag
+from chemprop.models.data_aug2 import MolDataset, visualize_mol_data, build_frag_graph, draw_frag_graph
 from rdkit import Chem
 
 if __name__ == "__main__":
@@ -239,3 +288,5 @@ if __name__ == "__main__":
     draw_frag_graph(G_frag, frags, out_file='outputs/macfrag_graph.jpg')
 
     print("\n✅ All done.")
+    
+    test_encoder_main()
